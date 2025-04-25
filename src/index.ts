@@ -109,6 +109,28 @@ bot.on('pre_checkout_query', (ctx) => {
 	});
 });
 
+bot.command('stats', async (ctx) => {
+	if (ctx.chatID !== ADMIN_CHAT_ID) {
+		return;
+	}
+
+	const stats = await env.DB.prepare(
+		'select count(*) as total from orders'
+	).run();
+
+	const totalOrders = stats.results[0].total;
+
+	const chatStats = await env.DB.prepare(
+		'select count(distinct chat_id) as total from orders'
+	).run();
+
+	const totalChats = chatStats.results[0].total;
+
+	return ctx.reply(`Total orders: ${totalOrders}\nTotal chats: ${totalChats}`, {
+		parse_mode: 'Markdown',
+	});
+});
+
 bot.on('message:successful_payment', async (ctx) => {
 	console.info(`Received successful payment: ${JSON.stringify(ctx)}`);
 	if (!ctx.message || !ctx.message.successful_payment || !ctx.from) {
