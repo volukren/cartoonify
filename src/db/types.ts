@@ -9,3 +9,12 @@ export interface OrderEntity {
 	error: string | null;
 	telegram_payment_charge_id: string | null;
 }
+
+export interface ChatEntity {
+	id: number;
+	username: string | null;
+	first_name: string | null;
+	last_name: string | null;
+	language_code: string | null;
+	type: string | null;
+}

@@ -10,6 +10,7 @@ import BotContext from './bot-context';
 import { OrderEntity } from './db/types';
 import OpenAI from 'openai';
 import { env } from 'cloudflare:workers';
+import { ADMIN_CHAT_ID } from './constants';
 
 const bot = new Bot<BotContext>(env.BOT_TOKEN);
 
@@ -22,7 +23,7 @@ bot.use(attachChat);
 
 bot.command('start', async (ctx: Context) => {
 	await ctx.reply(
-		'Hello, friend! 😄 Send me a selfie and I’ll turn it into a cartoon in your favorite style 🎨📸 Just pick the vibe you like! ✨'
+		'Hi there! Share any photo with me and I will transform it into a beautiful cartoon! ✨'
 	);
 });
 
@@ -52,7 +53,9 @@ bot.on('message:photo', async (ctx) => {
 		.bind(ctx.chatID, filepath)
 		.run();
 
-	console.info(`New order from ${ctx.chatId}: ${savedOrder.results[0]}`);
+	console.info(
+		`New order from ${ctx.chatId}: ${JSON.stringify(savedOrder.results[0])}`
+	);
 
 	const orderId = savedOrder.results[0].id;
 
@@ -89,7 +92,7 @@ bot.on('callback_query:data', async (ctx) => {
 			`One-time payment for the photo transformation`,
 			JSON.stringify({ orderId }),
 			'XTR',
-			[{ amount: 1, label: 'XTR' }]
+			[{ amount: ctx.chatID === ADMIN_CHAT_ID ? 1 : 75, label: 'XTR' }]
 		);
 	} catch (err) {
 		console.error('Error in callback query: ', err);
