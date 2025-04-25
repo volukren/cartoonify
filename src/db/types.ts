@@ -7,4 +7,5 @@ export interface OrderEntity {
 	style: string | null;
 	status: string;
 	error: string | null;
+	telegram_payment_charge_id: string | null;
 }
