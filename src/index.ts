@@ -1,16 +1,18 @@
-import {
-	Bot,
-	Context,
-	InlineKeyboard,
-	InputFile,
-	webhookCallback,
-} from 'grammy';
+import { Bot, InlineKeyboard, InputFile, webhookCallback } from 'grammy';
 import attachChat from './attach-chat';
 import BotContext from './bot-context';
 import { OrderEntity } from './db/types';
 import OpenAI from 'openai';
 import { env } from 'cloudflare:workers';
-import { ADMIN_CHAT_ID } from './constants';
+import {
+	ADMIN_CHAT_ID,
+	HELLO_MESSAGE_RU,
+	HELLO_MESSAGE_EN,
+	TRY_LATER_MESSAGE_RU,
+	TRY_LATER_MESSAGE_EN,
+	CHOOSE_STYLE_MESSAGE_RU,
+	CHOOSE_STYLE_MESSAGE_EN,
+} from './constants';
 
 const bot = new Bot<BotContext>(env.BOT_TOKEN);
 
@@ -21,44 +23,30 @@ bot.use(async (ctx, next) => {
 
 bot.use(attachChat);
 
-bot.command(['start', 'help'], async (ctx: Context) => {
+bot.command(['start', 'help'], async (ctx) => {
 	const photo = await env.BUCKET.get('start.png');
+	const message =
+		ctx.dbChat.language_code === 'ru' ? HELLO_MESSAGE_RU : HELLO_MESSAGE_EN;
 	if (photo) {
 		const photoBuffer = Buffer.from(await photo.arrayBuffer());
 		return ctx.replyWithPhoto(new InputFile(photoBuffer, 'image.png'), {
-			caption: `*🙋‍♂️ привет!*
-		
-Я №1 бот для трансформации обычных фотографий в красивые мультяшные стили 
-
-*Как начать?*
-- Отправь фото
-- Выбери стиль (гибли, дисней, пиксар, аниме)
-- Пополни баланс
-- Наслаждайся результатом
-`,
+			caption: message,
 			parse_mode: 'Markdown',
 		});
 	}
-	return ctx.reply(
-		`*🙋‍♂️ привет!*
-
-Я №1 бот для трансформации обычных фотографий в красивые мультяшные стили 
-
-*Как начать?*
-- Отправь фото
-- Выбери стиль (гибли, дисней, пиксар, аниме)
-	`,
-		{
-			parse_mode: 'Markdown',
-		}
-	);
+	return ctx.reply(message, { parse_mode: 'Markdown' });
 });
+
 bot.on('message:photo', async (ctx) => {
 	const file = await ctx.getFile();
 
 	if (!file.file_path) {
 		console.error('Failed to receive photo. File path is empty: ', file);
-		return ctx.reply('Не удалось получить фото. Попробуйте еще раз позже');
+		return ctx.reply(
+			ctx.dbChat.language_code === 'ru'
+				? TRY_LATER_MESSAGE_RU
+				: TRY_LATER_MESSAGE_EN
+		);
 	}
 
 	const response = await fetch(
@@ -66,36 +54,57 @@ bot.on('message:photo', async (ctx) => {
 	);
 	if (!response.ok) {
 		console.error('Failed to receive photo. Response is not ok: ', response);
-		return ctx.reply('Не удалось получить фото. Попробуйте еще раз позже');
+		return ctx.reply(
+			ctx.dbChat.language_code === 'ru'
+				? TRY_LATER_MESSAGE_RU
+				: TRY_LATER_MESSAGE_EN
+		);
 	}
 
-	const filepath = `${ctx.chatID}/${file.file_path.split('/').pop()}`;
+	const filepath = `${ctx.dbChat.id}/${file.file_path.split('/').pop()}`;
 
 	await env.BUCKET.put(filepath, await response.arrayBuffer());
 
 	const savedOrder = await env.DB.prepare(
 		'insert into orders (chat_id, input_image_path) values (?, ?) returning *'
 	)
-		.bind(ctx.chatID, filepath)
+		.bind(ctx.dbChat.id, filepath)
 		.run();
 
 	console.info(
-		`New order from ${ctx.chatId}: ${JSON.stringify(savedOrder.results[0])}`
+		`New order from ${ctx.dbChat.id}: ${JSON.stringify(savedOrder.results[0])}`
 	);
 
 	const orderId = savedOrder.results[0].id;
 
 	const keyboard = new InlineKeyboard();
-	keyboard.text('Пиксар', `pixar:${orderId}`);
-	keyboard.text('Аниме', `anime:${orderId}`);
+	keyboard.text(
+		ctx.dbChat.language_code === 'ru' ? 'Пиксар' : 'Pixar',
+		`pixar:${orderId}`
+	);
+	keyboard.text(
+		ctx.dbChat.language_code === 'ru' ? 'Аниме' : 'Anime',
+		`anime:${orderId}`
+	);
 	keyboard.row();
-	keyboard.text('Гибли', `ghibli:${orderId}`);
-	keyboard.text('Дисней', `disney:${orderId}`);
+	keyboard.text(
+		ctx.dbChat.language_code === 'ru' ? 'Гибли' : 'Ghibli',
+		`ghibli:${orderId}`
+	);
+	keyboard.text(
+		ctx.dbChat.language_code === 'ru' ? 'Дисней' : 'Disney',
+		`disney:${orderId}`
+	);
 	keyboard.row();
 
-	return ctx.reply('Выбери стиль для трансформации фото', {
-		reply_markup: keyboard,
-	});
+	return ctx.reply(
+		ctx.dbChat.language_code === 'ru'
+			? CHOOSE_STYLE_MESSAGE_RU
+			: CHOOSE_STYLE_MESSAGE_EN,
+		{
+			reply_markup: keyboard,
+		}
+	);
 });
 
 bot.on('callback_query:data', async (ctx) => {
@@ -114,16 +123,22 @@ bot.on('callback_query:data', async (ctx) => {
 		}
 
 		return ctx.replyWithInvoice(
-			'Одноразовый платеж',
-			`Одноразовый платеж за трансформацию фото`,
+			ctx.dbChat.language_code === 'ru'
+				? 'Одноразовый платеж'
+				: 'One-time payment',
+			ctx.dbChat.language_code === 'ru'
+				? 'Одноразовый платеж за трансформацию фото'
+				: 'One-time payment for photo transformation',
 			JSON.stringify({ orderId }),
 			'XTR',
-			[{ amount: ctx.chatID === ADMIN_CHAT_ID ? 1 : 75, label: 'XTR' }]
+			[{ amount: ctx.dbChat.id === ADMIN_CHAT_ID ? 1 : 75, label: 'XTR' }]
 		);
 	} catch (err) {
 		console.error('Error in callback query: ', err);
 		return ctx.answerCallbackQuery(
-			'Что-то пошло не так. Попробуйте еще раз позже'
+			ctx.dbChat.language_code === 'ru'
+				? TRY_LATER_MESSAGE_RU
+				: TRY_LATER_MESSAGE_EN
 		);
 	}
 });
@@ -136,7 +151,7 @@ bot.on('pre_checkout_query', (ctx) => {
 });
 
 bot.command('stats', async (ctx) => {
-	if (ctx.chatID !== ADMIN_CHAT_ID) {
+	if (ctx.dbChat.id !== ADMIN_CHAT_ID) {
 		return;
 	}
 
@@ -180,7 +195,9 @@ bot.on('message:successful_payment', async (ctx) => {
 		.run();
 
 	if (!orderFromDB.success) {
-		return ctx.reply('Заказ не найден');
+		return ctx.reply(
+			ctx.dbChat.language_code === 'ru' ? 'Заказ не найден' : 'Order not found'
+		);
 	}
 
 	console.info(
@@ -198,10 +215,12 @@ bot.on('message:successful_payment', async (ctx) => {
 		} стиле`
 	);
 
-	return ctx.reply(
-		`✨ Обрабатываю фото в *${orderFromDB.results[0].style}* стиле. Это может занять пару минут ⏳`,
-		{ parse_mode: 'Markdown' }
-	);
+	const message =
+		ctx.dbChat.language_code === 'ru'
+			? `✨ Обрабатываю фото в *${orderFromDB.results[0].style}* стиле. Это может занять пару минут ⏳`
+			: `✨ Processing photo in *${orderFromDB.results[0].style}* style. This may take a few minutes ⏳`;
+
+	return ctx.reply(message, { parse_mode: 'Markdown' });
 });
 
 export default {
@@ -259,8 +278,21 @@ export default {
 					)
 					.run();
 
+				const chat = await env.DB.prepare('select * from chats where id = ?')
+					.bind(order.chat_id)
+					.run();
+
+				if (!chat.success || chat.results.length < 1) {
+					throw new Error('Chat not found');
+				}
+
+				const message =
+					chat.results[0].language_code === 'ru'
+						? `Фото было трансформировано в *${order.style}*. Спасибо за использование нашего сервиса! 🎉`
+						: `Photo was transformed to *${order.style}*. Thank you for using our service! 🎉`;
+
 				await bot.api.sendPhoto(order.chat_id, new InputFile(imageBytes), {
-					caption: `Фото было трансформировано в *${order.style}*. Спасибо за использование нашего сервиса! 🎉`,
+					caption: message,
 					parse_mode: 'Markdown',
 				});
 
@@ -271,6 +303,10 @@ export default {
 					.run();
 			} catch (error) {
 				console.error(`Failed to process order ${order.id}: ${error}`);
+				await bot.api.sendMessage(
+					ADMIN_CHAT_ID,
+					`❌ Ошибка при обработке заказа ${order.id}: ${error}`
+				);
 			}
 		}
 	},

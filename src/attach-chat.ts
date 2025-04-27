@@ -13,15 +13,13 @@ export default async function attachChat(ctx: BotContext, next: NextFunction) {
 		return;
 	}
 
-	ctx.chatID = ctx.chat.id;
-
-	const chat = await env.DB.prepare('SELECT * FROM chats WHERE id = ?')
+	let chat = await env.DB.prepare('SELECT * FROM chats WHERE id = ?')
 		.bind(ctx.chat.id)
 		.first<ChatEntity>();
 
 	if (!chat && ctx.from) {
-		await env.DB.prepare(
-			'insert into chats (id, username, first_name, last_name, language_code, type) values (?, ?, ?, ?, ?, ?)'
+		chat = await env.DB.prepare(
+			'insert into chats (id, username, first_name, last_name, language_code, type) values (?, ?, ?, ?, ?, ?) returning *'
 		)
 			.bind(
 				ctx.chat.id,
@@ -31,7 +29,15 @@ export default async function attachChat(ctx: BotContext, next: NextFunction) {
 				ctx.from.language_code ?? null,
 				ctx.chat.type ?? null
 			)
-			.run();
+			.first<ChatEntity>();
 	}
+
+	if (!chat) {
+		console.error('Failed to attach chat', ctx.chat.id);
+		return;
+	}
+
+	ctx.dbChat = chat;
+
 	return next();
 }
