@@ -21,18 +21,44 @@ bot.use(async (ctx, next) => {
 
 bot.use(attachChat);
 
-bot.command('start', async (ctx: Context) => {
-	await ctx.reply(
-		'Hi there! Share any photo with me and I will transform it into a beautiful cartoon! ✨'
+bot.command(['start', 'help'], async (ctx: Context) => {
+	const photo = await env.BUCKET.get('start.png');
+	if (photo) {
+		const photoBuffer = Buffer.from(await photo.arrayBuffer());
+		return ctx.replyWithPhoto(new InputFile(photoBuffer, 'image.png'), {
+			caption: `*🙋‍♂️ привет!*
+		
+Я №1 бот для трансформации обычных фотографий в красивые мультяшные стили 
+
+*Как начать?*
+- Отправь фото
+- Выбери стиль (гибли, дисней, пиксар, аниме)
+- Пополни баланс
+- Наслаждайся результатом
+`,
+			parse_mode: 'Markdown',
+		});
+	}
+	return ctx.reply(
+		`*🙋‍♂️ привет!*
+
+Я №1 бот для трансформации обычных фотографий в красивые мультяшные стили 
+
+*Как начать?*
+- Отправь фото
+- Выбери стиль (гибли, дисней, пиксар, аниме)
+	`,
+		{
+			parse_mode: 'Markdown',
+		}
 	);
 });
-
 bot.on('message:photo', async (ctx) => {
 	const file = await ctx.getFile();
 
 	if (!file.file_path) {
 		console.error('Failed to receive photo. File path is empty: ', file);
-		return ctx.reply('Failed to receive photo. Please, try again later');
+		return ctx.reply('Не удалось получить фото. Попробуйте еще раз позже');
 	}
 
 	const response = await fetch(
@@ -40,7 +66,7 @@ bot.on('message:photo', async (ctx) => {
 	);
 	if (!response.ok) {
 		console.error('Failed to receive photo. Response is not ok: ', response);
-		return ctx.reply('Failed to receive photo. Please, try again later');
+		return ctx.reply('Не удалось получить фото. Попробуйте еще раз позже');
 	}
 
 	const filepath = `${ctx.chatID}/${file.file_path.split('/').pop()}`;
@@ -60,14 +86,14 @@ bot.on('message:photo', async (ctx) => {
 	const orderId = savedOrder.results[0].id;
 
 	const keyboard = new InlineKeyboard();
-	keyboard.text('Pixar', `pixar:${orderId}`);
-	keyboard.text('Anime', `anime:${orderId}`);
+	keyboard.text('Пиксар', `pixar:${orderId}`);
+	keyboard.text('Аниме', `anime:${orderId}`);
 	keyboard.row();
-	keyboard.text('Ghibli', `ghibli:${orderId}`);
-	keyboard.text('Disney', `disney:${orderId}`);
+	keyboard.text('Гибли', `ghibli:${orderId}`);
+	keyboard.text('Дисней', `disney:${orderId}`);
 	keyboard.row();
 
-	return ctx.reply('Please, choose style to transform your photo', {
+	return ctx.reply('Выбери стиль для трансформации фото', {
 		reply_markup: keyboard,
 	});
 });
@@ -84,12 +110,12 @@ bot.on('callback_query:data', async (ctx) => {
 			.run();
 
 		if (!orderFromDB.success) {
-			return ctx.answerCallbackQuery('Order not found');
+			return ctx.answerCallbackQuery('Заказ не найден');
 		}
 
 		return ctx.replyWithInvoice(
-			'One-time payment',
-			`One-time payment for the photo transformation`,
+			'Одноразовый платеж',
+			`Одноразовый платеж за трансформацию фото`,
 			JSON.stringify({ orderId }),
 			'XTR',
 			[{ amount: ctx.chatID === ADMIN_CHAT_ID ? 1 : 75, label: 'XTR' }]
@@ -97,7 +123,7 @@ bot.on('callback_query:data', async (ctx) => {
 	} catch (err) {
 		console.error('Error in callback query: ', err);
 		return ctx.answerCallbackQuery(
-			'Something went wrong. Please, try again later'
+			'Что-то пошло не так. Попробуйте еще раз позже'
 		);
 	}
 });
@@ -154,7 +180,7 @@ bot.on('message:successful_payment', async (ctx) => {
 		.run();
 
 	if (!orderFromDB.success) {
-		return ctx.reply('Order not found');
+		return ctx.reply('Заказ не найден');
 	}
 
 	console.info(
@@ -163,8 +189,17 @@ bot.on('message:successful_payment', async (ctx) => {
 
 	await env.IMAGE_GEN_Q.send({ order: orderFromDB.results[0] });
 
+	await bot.api.sendMessage(
+		ADMIN_CHAT_ID,
+		`💰 Новый заказ: ${ctx.from.username ? '@' + ctx.from.username : ''} (${
+			ctx.from.first_name ?? ''
+		} ${ctx.from.last_name ?? ''}) заказал трансформацию фото в ${
+			orderFromDB.results[0].style
+		} стиле`
+	);
+
 	return ctx.reply(
-		`✨ I'm now processing your photo in *${orderFromDB.results[0].style}* style. It may take a few minutes. ⏳ Please wait for the magic to happen... 🎨`,
+		`✨ Обрабатываю фото в *${orderFromDB.results[0].style}* стиле. Это может занять пару минут ⏳`,
 		{ parse_mode: 'Markdown' }
 	);
 });
@@ -225,7 +260,7 @@ export default {
 					.run();
 
 				await bot.api.sendPhoto(order.chat_id, new InputFile(imageBytes), {
-					caption: `Your photo has been transformed to *${order.style}* style. Thank you for using our service! 🎉`,
+					caption: `Фото было трансформировано в *${order.style}*. Спасибо за использование нашего сервиса! 🎉`,
 					parse_mode: 'Markdown',
 				});
 
