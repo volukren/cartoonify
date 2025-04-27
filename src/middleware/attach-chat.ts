@@ -1,8 +1,8 @@
 import type { NextFunction } from 'grammy';
 import { env } from 'cloudflare:workers';
 
-import type BotContext from './bot-context';
-import { ChatEntity } from './db/types';
+import type BotContext from '../bot-context';
+import { ChatEntity } from '../db/types';
 
 export default async function attachChat(ctx: BotContext, next: NextFunction) {
 	if (ctx.preCheckoutQuery) {

@@ -1,5 +1,5 @@
 import { Bot, InlineKeyboard, InputFile, webhookCallback } from 'grammy';
-import attachChat from './attach-chat';
+import attachChat from './middleware/attach-chat';
 import BotContext from './bot-context';
 import { OrderEntity } from './db/types';
 import OpenAI from 'openai';
